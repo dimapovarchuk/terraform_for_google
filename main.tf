@@ -8,16 +8,92 @@ terraform {
 }
 
 provider "google" {
-  credentials = file("my_gcp.json")
+  credentials = file("gcp.json")
 
-  project = "project_vasis"
-  region  = "europe-north1"
-  zone    = "europe-north1-a"
+  project = var.project
+  region  = var.region
+  zone    = "${var.region}-a"
 }
 
-resource "google_compute_instance" "vm_instance" {
-  name         = "moodle"
-  machine_type = "e2-small"
+
+resource "google_compute_network" "vpc_network" {
+  name = "terraform-network"
+}
+
+
+resource "google_compute_firewall" "vpc_icmp" {
+  name    = "terraform-icmp-allow"
+  network = google_compute_network.vpc_network.name
+
+  allow {
+    protocol = "icmp"
+  }
+
+  target_tags   = ["icmp-allow"]
+    
+}
+
+
+resource "google_compute_firewall" "vpc_http" {
+  name    = "terraform-http-allow"
+  network = google_compute_network.vpc_network.name
+    
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
+  }
+
+  target_tags   = ["http-allow"]
+      
+}
+
+
+resource "google_compute_firewall" "vpc_https" {
+  name    = "terraform-https-allow"
+  network = google_compute_network.vpc_network.name
+
+  
+  allow {
+    protocol = "tcp"
+    ports    = ["443"]
+  }
+
+  target_tags   = ["https-allow"]
+      
+}
+
+resource "google_compute_firewall" "vpc_ssh" {
+  name    = "terraform-ssh-allow"
+  network = google_compute_network.vpc_network.name
+
+  
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  target_tags   = ["ssh-allow"]
+      
+}
+
+resource "google_compute_firewall" "vpc_app" {
+  name    = "terraform-app-allow"
+  network = google_compute_network.vpc_network.name
+
+  
+  allow {
+    protocol = "tcp"
+    ports    = ["5000"]
+  }
+
+  target_tags   = ["app-allow"]
+      
+}
+
+resource "google_compute_instance" "digichlist-srv" {
+  name         = "digichlist-srv"
+  machine_type = var.instance
+  tags         = ["ssh-allow","http-allow","https-allow","icmp-allow","app-allow"]
 
   boot_disk {
     initialize_params {
@@ -25,17 +101,17 @@ resource "google_compute_instance" "vm_instance" {
     }
   }
 
-  metadata = {
-    ssh-keys = "vasis:${file("google-cloud.pub")}"
-  }
-
-  metadata_startup_script = "sudo apt update; sudo apt install apache2 -y"
-
-  tags = ["http-server", "https-server"]
-
   network_interface {
-    network = "default"
+    network = google_compute_network.vpc_network.name
     access_config {
     }
   }
+
+  metadata_startup_script = file("./first_run.sh")
+  
+  metadata = {
+    ssh-keys = "${var.user}:${file(var.publickeypath)}"
+    
+  }
+  
 }
